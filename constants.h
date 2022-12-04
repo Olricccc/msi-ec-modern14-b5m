@@ -53,7 +53,7 @@
 #define MSI_EC_WEBCAM_HARD_ADDRESS 0x2f
 #define MSI_EC_WEBCAM_HARD_BIT 1 /* hotkey has no effect if this address disables the cam */
 
-#define MSI_EC_KBD_BL_ADDRESS 0xd3
+#define MSI_EC_KBD_BL_ADDRESS 0xf3
 #define MSI_EC_KBD_BL_STATE_MASK 0x3
 #define MSI_EC_KBD_BL_STATE_OFF 0x80
 #define MSI_EC_KBD_BL_STATE_ON 0x81
