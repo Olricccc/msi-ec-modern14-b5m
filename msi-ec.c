@@ -767,9 +767,8 @@ static int micmute_led_sysfs_set(struct led_classdev *led_cdev,
 static int mute_led_sysfs_set(struct led_classdev *led_cdev,
 			      enum led_brightness brightness)
 {
-	int result = ec_write_bit(MSI_EC_KBD_LED_MUTE_ADDRESS,
-				  MSI_EC_KBD_LED_MUTE_BIT,
-				  brightness);
+	u8 state = brightness ? MSI_EC_MUTE_LED_STATE_ON : MSI_EC_MUTE_LED_STATE_OFF;
+	int result = ec_write(MSI_EC_KBD_LED_MUTE_ADDRESS, state);
 	if (result < 0)
 		return result;
 	return 0;
