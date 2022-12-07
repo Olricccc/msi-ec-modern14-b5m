@@ -1,12 +1,6 @@
 # Embedded Controller for MSI Modern laptops
 
-Fork of msi-ec (https://github.com/BeardOverflow/msi-ec) with support for MSI Modern 15 A11M (Business series)
-
-I have also created a [pattern script for ImHex](msi_modern_15_a11m_ec.hexpat). It contains annotations for all useful memory addresses discovered on the Modern 15.
-
-![hex pattern screenshot](https://user-images.githubusercontent.com/38386967/193131500-8b0dd17d-0c7b-4eef-9316-289640bba345.png)
-
-
+Fork of msi-ec-modern (https://github.com/ThePBone/msi-ec-modern) with support for MSI Modern 14 B5M (Business series)
 
 ## Disclaimer
 
@@ -148,12 +142,13 @@ Led subsystem allows us to control the leds on the laptop including the keyboard
     - 0: Off
     - 1: On
     - 2: Half
-    - 1: Full
+    - 3: Full
 
 
 ## List of tested laptops:
 
-- MSI Modern 15 A11M (1552EMS1.118)
+- MSI Modern 14 B5M (14DLEMS1.105)
 
 ## Credits
+ * [msi-ec-modern](https://github.com/ThePBone/msi-ec-modern)
  * [msi-ec](https://github.com/BeardOverflow/msi-ec)
