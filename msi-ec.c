@@ -3,6 +3,8 @@
 /*
  * msi-ec.c - MSI Embedded Controller for laptops support.
  *
+ * Adapted to support MSI Modern 15 (A11M)
+ *
  * This driver exports a few files in /sys/devices/platform/msi-laptop:
  *   webcam            Integrated webcam activation
  *   fn_key            Function key location
@@ -16,13 +18,6 @@
  *   cpu/..            CPU related options
  *   gpu/..            GPU related options
  *
- * In addition to these platform device attributes the driver
- * registers itself in the Linux power_supply subsystem and is
- * available to userspace under /sys/class/power_supply/<power_supply>:
- *
- *   charge_control_start_threshold
- *   charge_control_end_threshold
- * 
  * This driver also registers available led class devices for
  * mute, micmute and keyboard_backlight leds
  *
@@ -44,7 +39,7 @@
 
 #define streq(x, y) (strcmp(x, y) == 0 || strcmp(x, y "\n") == 0)
 
-static int ec_read_seq(u8 addr, u8 *buf, int len)
+static int ec_read_seq(u8 addr, u8 *buf, u8 len)
 {
 	int result;
 	u8 i;
@@ -56,109 +51,26 @@ static int ec_read_seq(u8 addr, u8 *buf, int len)
 	return 0;
 }
 
-// ============================================================ //
-// Sysfs power_supply subsystem
-// ============================================================ //
-
-static ssize_t charge_control_threshold_show(u8 offset, struct device *device,
-					     struct device_attribute *attr,
-					     char *buf)
+static int ec_write_bit(u8 addr, u8 index, bool set)
 {
-	u8 rdata;
+	u8 data;
 	int result;
 
-	result = ec_read(MSI_EC_CHARGE_CONTROL_ADDRESS, &rdata);
+	result = ec_read(addr, &data);
 	if (result < 0)
 		return result;
+	if(set)
+		data |= (1UL << index);
+	else
+		data &= ~(1UL << index);
 
-	return sprintf(buf, "%i\n", rdata - offset);
+	return ec_write(addr, data);
 }
 
-static ssize_t
-charge_control_start_threshold_show(struct device *device,
-				    struct device_attribute *attr, char *buf)
+static bool is_bit_set(u8 index, u8 byte)
 {
-	return charge_control_threshold_show(MSI_EC_CHARGE_CONTROL_OFFSET_START,
-					     device, attr, buf);
+	return (byte >> index) & 1UL;
 }
-
-static ssize_t charge_control_end_threshold_show(struct device *device,
-						 struct device_attribute *attr,
-						 char *buf)
-{
-	return charge_control_threshold_show(MSI_EC_CHARGE_CONTROL_OFFSET_END,
-					     device, attr, buf);
-}
-
-static ssize_t charge_control_threshold_store(u8 offset, struct device *dev,
-					      struct device_attribute *attr,
-					      const char *buf, size_t count)
-{
-	u8 wdata;
-	int result;
-
-	result = kstrtou8(buf, 10, &wdata);
-	if (result < 0)
-		return result;
-
-	wdata += offset;
-	if (wdata < MSI_EC_CHARGE_CONTROL_RANGE_MIN ||
-	    wdata > MSI_EC_CHARGE_CONTROL_RANGE_MAX)
-		return -EINVAL;
-
-	result = ec_write(MSI_EC_CHARGE_CONTROL_ADDRESS, wdata);
-	if (result < 0)
-		return result;
-
-	return count;
-}
-
-static ssize_t
-charge_control_start_threshold_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t count)
-{
-	return charge_control_threshold_store(
-		MSI_EC_CHARGE_CONTROL_OFFSET_START, dev, attr, buf, count);
-}
-
-static ssize_t charge_control_end_threshold_store(struct device *dev,
-						  struct device_attribute *attr,
-						  const char *buf, size_t count)
-{
-	return charge_control_threshold_store(MSI_EC_CHARGE_CONTROL_OFFSET_END,
-					      dev, attr, buf, count);
-}
-
-static DEVICE_ATTR_RW(charge_control_start_threshold);
-static DEVICE_ATTR_RW(charge_control_end_threshold);
-
-static struct attribute *msi_battery_attrs[] = {
-	&dev_attr_charge_control_start_threshold.attr,
-	&dev_attr_charge_control_end_threshold.attr,
-	NULL,
-};
-
-ATTRIBUTE_GROUPS(msi_battery);
-
-static int msi_battery_add(struct power_supply *battery)
-{
-	if (device_add_groups(&battery->dev, msi_battery_groups))
-		return -ENODEV;
-	return 0;
-}
-
-static int msi_battery_remove(struct power_supply *battery)
-{
-	device_remove_groups(&battery->dev, msi_battery_groups);
-	return 0;
-}
-
-static struct acpi_battery_hook battery_hook = {
-	.add_battery = msi_battery_add,
-	.remove_battery = msi_battery_remove,
-	.name = MSI_DRIVER_NAME,
-};
 
 // ============================================================ //
 // Sysfs platform device attributes (root)
@@ -174,14 +86,10 @@ static ssize_t webcam_show(struct device *device, struct device_attribute *attr,
 	if (result < 0)
 		return result;
 
-	switch (rdata) {
-	case MSI_EC_WEBCAM_ON:
+	if(is_bit_set(MSI_EC_WEBCAM_BIT, rdata))
 		return sprintf(buf, "%s\n", "on");
-	case MSI_EC_WEBCAM_OFF:
+	else
 		return sprintf(buf, "%s\n", "off");
-	default:
-		return sprintf(buf, "%s (%i)\n", "unknown", rdata);
-	}
 }
 
 static ssize_t webcam_store(struct device *dev, struct device_attribute *attr,
@@ -190,10 +98,14 @@ static ssize_t webcam_store(struct device *dev, struct device_attribute *attr,
 	int result = -EINVAL;
 
 	if (streq(buf, "on"))
-		result = ec_write(MSI_EC_WEBCAM_ADDRESS, MSI_EC_WEBCAM_ON);
+		result = ec_write_bit(MSI_EC_WEBCAM_ADDRESS,
+				      MSI_EC_WEBCAM_BIT,
+				      TRUE);
 
 	if (streq(buf, "off"))
-		result = ec_write(MSI_EC_WEBCAM_ADDRESS, MSI_EC_WEBCAM_OFF);
+		result = ec_write_bit(MSI_EC_WEBCAM_ADDRESS,
+				      MSI_EC_WEBCAM_BIT,
+				      FALSE);
 
 	if (result < 0)
 		return result;
@@ -211,13 +123,11 @@ static ssize_t fn_key_show(struct device *device, struct device_attribute *attr,
 	if (result < 0)
 		return result;
 
-	switch (rdata) {
-	case MSI_EC_FN_KEY_LEFT:
+	if(is_bit_set(MSI_EC_FN_WIN_BIT, rdata) == MSI_EC_FN_KEY_LEFT) {
 		return sprintf(buf, "%s\n", "left");
-	case MSI_EC_FN_KEY_RIGHT:
+	}
+	else {
 		return sprintf(buf, "%s\n", "right");
-	default:
-		return sprintf(buf, "%s (%i)\n", "unknown", rdata);
 	}
 }
 
@@ -227,10 +137,14 @@ static ssize_t fn_key_store(struct device *dev, struct device_attribute *attr,
 	int result = -EINVAL;
 
 	if (streq(buf, "left"))
-		result = ec_write(MSI_EC_FN_WIN_ADDRESS, MSI_EC_FN_KEY_LEFT);
+		result = ec_write_bit(MSI_EC_FN_WIN_ADDRESS,
+				      MSI_EC_FN_WIN_BIT,
+				      MSI_EC_FN_KEY_LEFT);
 
 	if (streq(buf, "right"))
-		result = ec_write(MSI_EC_FN_WIN_ADDRESS, MSI_EC_FN_KEY_RIGHT);
+		result = ec_write_bit(MSI_EC_FN_WIN_ADDRESS,
+				      MSI_EC_FN_WIN_BIT,
+				      MSI_EC_FN_KEY_RIGHT);
 
 	if (result < 0)
 		return result;
@@ -248,13 +162,11 @@ static ssize_t win_key_show(struct device *device,
 	if (result < 0)
 		return result;
 
-	switch (rdata) {
-	case MSI_EC_WIN_KEY_LEFT:
+	if(is_bit_set(MSI_EC_FN_WIN_BIT, rdata) == MSI_EC_WIN_KEY_LEFT) {
 		return sprintf(buf, "%s\n", "left");
-	case MSI_EC_WIN_KEY_RIGHT:
+	}
+	else {
 		return sprintf(buf, "%s\n", "right");
-	default:
-		return sprintf(buf, "%s (%i)\n", "unknown", rdata);
 	}
 }
 
@@ -264,10 +176,14 @@ static ssize_t win_key_store(struct device *dev, struct device_attribute *attr,
 	int result = -EINVAL;
 
 	if (streq(buf, "left"))
-		result = ec_write(MSI_EC_FN_WIN_ADDRESS, MSI_EC_WIN_KEY_LEFT);
+		result = ec_write_bit(MSI_EC_FN_WIN_ADDRESS,
+				      MSI_EC_FN_WIN_BIT,
+				      MSI_EC_WIN_KEY_LEFT);
 
 	if (streq(buf, "right"))
-		result = ec_write(MSI_EC_FN_WIN_ADDRESS, MSI_EC_WIN_KEY_RIGHT);
+		result = ec_write_bit(MSI_EC_FN_WIN_ADDRESS,
+				      MSI_EC_FN_WIN_BIT,
+				      MSI_EC_WIN_KEY_RIGHT);
 
 	if (result < 0)
 		return result;
@@ -275,8 +191,8 @@ static ssize_t win_key_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-static ssize_t battery_mode_show(struct device *device,
-				 struct device_attribute *attr, char *buf)
+static ssize_t battery_charge_mode_show(struct device *device,
+				 	struct device_attribute *attr, char *buf)
 {
 	u8 rdata;
 	int result;
@@ -297,9 +213,9 @@ static ssize_t battery_mode_show(struct device *device,
 	}
 }
 
-static ssize_t battery_mode_store(struct device *dev,
-				  struct device_attribute *attr,
-				  const char *buf, size_t count)
+static ssize_t battery_charge_mode_store(struct device *dev,
+				  	 struct device_attribute *attr,
+				  	 const char *buf, size_t count)
 {
 	int result = -EINVAL;
 
@@ -331,14 +247,10 @@ static ssize_t cooler_boost_show(struct device *device,
 	if (result < 0)
 		return result;
 
-	switch (rdata) {
-	case MSI_EC_COOLER_BOOST_ON:
+	if(is_bit_set(MSI_EC_COOLER_BOOST_BIT, rdata))
 		return sprintf(buf, "%s\n", "on");
-	case MSI_EC_COOLER_BOOST_OFF:
+	else
 		return sprintf(buf, "%s\n", "off");
-	default:
-		return sprintf(buf, "%s (%i)\n", "unknown", rdata);
-	}
 }
 
 static ssize_t cooler_boost_store(struct device *dev,
@@ -348,12 +260,14 @@ static ssize_t cooler_boost_store(struct device *dev,
 	int result = -EINVAL;
 
 	if (streq(buf, "on"))
-		result = ec_write(MSI_EC_COOLER_BOOST_ADDRESS,
-				  MSI_EC_COOLER_BOOST_ON);
+		result = ec_write_bit(MSI_EC_COOLER_BOOST_ADDRESS,
+				      MSI_EC_COOLER_BOOST_BIT,
+				      TRUE);
 
 	if (streq(buf, "off"))
-		result = ec_write(MSI_EC_COOLER_BOOST_ADDRESS,
-				  MSI_EC_COOLER_BOOST_OFF);
+		result = ec_write_bit(MSI_EC_COOLER_BOOST_ADDRESS,
+				      MSI_EC_COOLER_BOOST_BIT,
+				      FALSE);
 
 	if (result < 0)
 		return result;
@@ -372,8 +286,8 @@ static ssize_t shift_mode_show(struct device *device,
 		return result;
 
 	switch (rdata) {
-	case MSI_EC_SHIFT_MODE_PERFORMANCE:
-		return sprintf(buf, "%s\n", "performance");
+	case MSI_EC_SHIFT_MODE_OVERCLOCK:
+		return sprintf(buf, "%s\n", "overclock");
 	case MSI_EC_SHIFT_MODE_BALANCED:
 		return sprintf(buf, "%s\n", "balanced");
 	case MSI_EC_SHIFT_MODE_ECO:
@@ -391,9 +305,9 @@ static ssize_t shift_mode_store(struct device *dev,
 {
 	int result = -EINVAL;
 
-	if (streq(buf, "performance"))
+	if (streq(buf, "overclock"))
 		result = ec_write(MSI_EC_SHIFT_MODE_ADDRESS,
-				  MSI_EC_SHIFT_MODE_PERFORMANCE);
+				  MSI_EC_SHIFT_MODE_OVERCLOCK);
 
 	if (streq(buf, "balanced"))
 		result = ec_write(MSI_EC_SHIFT_MODE_ADDRESS,
@@ -423,15 +337,17 @@ static ssize_t fan_mode_show(struct device *device,
 	if (result < 0)
 		return result;
 
-	switch (rdata) {
-	case MSI_EC_FAN_MODE_SILENT:
+	if (is_bit_set(MSI_EC_FAN_MODE_SILENT_BIT, rdata))  {
 		return sprintf(buf, "%s\n", "silent");
-	case MSI_EC_FAN_MODE_BASIC:
-		return sprintf(buf, "%s\n", "basic");
-	case MSI_EC_FAN_MODE_ADVANCED:
+	}
+	else if (is_bit_set(MSI_EC_FAN_MODE_ADVANCED_BIT, rdata))  {
 		return sprintf(buf, "%s\n", "advanced");
-	default:
-		return sprintf(buf, "%s (%i)\n", "unknown", rdata);
+	}
+	else if (is_bit_set(MSI_EC_FAN_MODE_BASIC_BIT, rdata)) {
+		return sprintf(buf, "%s\n", "basic");
+	}
+	else {
+		return sprintf(buf, "%s\n", "auto");
 	}
 }
 
@@ -439,21 +355,144 @@ static ssize_t fan_mode_store(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
 	int result = -EINVAL;
+	bool is_auto = streq(buf, "auto");
+	bool is_silent = streq(buf, "silent");
+	bool is_basic = streq(buf, "basic");
+	bool is_adv = streq(buf, "advanced");
 
-	if (streq(buf, "silent"))
-		result =
-			ec_write(MSI_EC_FAN_MODE_ADDRESS, MSI_EC_FAN_MODE_SILENT);
+	if (!is_auto && !is_basic && !is_adv && !is_silent)
+		return result;
 
-	if (streq(buf, "basic"))
-		result = ec_write(MSI_EC_FAN_MODE_ADDRESS,
-				  MSI_EC_FAN_MODE_BASIC);
-
-	if (streq(buf, "advanced"))
-		result = ec_write(MSI_EC_FAN_MODE_ADDRESS,
-				  MSI_EC_FAN_MODE_ADVANCED);
+	result = ec_write_bit(MSI_EC_FAN_MODE_ADDRESS,
+			      MSI_EC_FAN_MODE_BASIC_BIT,
+			      is_basic);
 
 	if (result < 0)
 		return result;
+
+	result = ec_write_bit(MSI_EC_FAN_MODE_ADDRESS,
+			      MSI_EC_FAN_MODE_ADVANCED_BIT,
+			      is_adv);
+
+	if (result < 0)
+		return result;
+
+	result = ec_write_bit(MSI_EC_FAN_MODE_ADDRESS,
+			      MSI_EC_FAN_MODE_SILENT_BIT,
+			      is_silent);
+
+	if (result < 0)
+		return result;
+
+	return count;
+}
+
+static ssize_t preset_show(struct device *device,
+			     struct device_attribute *attr, char *buf)
+{
+	int c;
+	int v;
+	int result;
+	u8 rdata;
+	bool match;
+
+	for (v = 0; v < ARRAY_SIZE(MSI_EC_PRESET_VALUE_TABLE); v++) {
+		match = TRUE;
+		for (c = 0; c < ARRAY_SIZE(MSI_EC_PRESET_MEMORY_TABLE); c++) {
+			u8 addr = MSI_EC_PRESET_MEMORY_TABLE[c];
+			u8 value = MSI_EC_PRESET_VALUE_TABLE[v][c];
+
+			result = ec_read(addr, &rdata);
+
+			if (result < 0) {
+				pr_err("msi-ec: preset_store: failed to read from address %#02x "
+				       "while checking preset %i (error code %i)",
+				       addr, v, result);
+				match = FALSE;
+				break;
+			}
+
+			// Ignore keyboard brightness; not actually relevant
+			if (c == MSI_EC_PRESET_COLUMN_KBD_BL)
+				continue;
+			else if (c == MSI_EC_PRESET_COLUMN_SILENT_FLAG) {
+				if(value == is_bit_set(MSI_EC_FAN_MODE_SILENT_BIT, rdata))
+					continue;
+
+				match = FALSE;
+				break;
+			}
+			else if (value != rdata) {
+				match = FALSE;
+				break;
+			}
+		}
+
+		if (match) {
+			switch (v) {
+			case MSI_EC_PRESET_SUPER_BATTERY:
+				return sprintf(buf, "%s\n", "super_battery");
+			case MSI_EC_PRESET_SILENT:
+				return sprintf(buf, "%s\n", "silent");
+			case MSI_EC_PRESET_BALANCED:
+				return sprintf(buf, "%s\n", "balanced");
+			case MSI_EC_PRESET_HIGH_PERFORMANCE:
+				return sprintf(buf, "%s\n", "high_performance");
+			}
+		}
+	}
+
+	return sprintf(buf, "%s\n", "custom");
+}
+
+static ssize_t preset_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	int result = -EINVAL;
+	int index;
+	int c;
+
+	if (streq(buf, "super_battery"))
+		index = MSI_EC_PRESET_SUPER_BATTERY;
+	else if (streq(buf, "silent"))
+		index = MSI_EC_PRESET_SILENT;
+	else if (streq(buf, "balanced"))
+		index = MSI_EC_PRESET_BALANCED;
+	else if (streq(buf, "high_performance"))
+		index = MSI_EC_PRESET_HIGH_PERFORMANCE;
+	else
+		return result;
+
+	for (c = 0; c < ARRAY_SIZE(MSI_EC_PRESET_MEMORY_TABLE); c++) {
+		u8 addr = MSI_EC_PRESET_MEMORY_TABLE[c];
+		u8 value = MSI_EC_PRESET_VALUE_TABLE[index][c];
+
+		if(c == MSI_EC_PRESET_COLUMN_SILENT_FLAG) {
+			result = ec_write_bit(addr,
+					      MSI_EC_FAN_MODE_SILENT_BIT,
+					      value);
+		}
+		else {
+			result = ec_write(addr, value);
+		}
+
+		if(result < 0)
+			pr_err("msi-ec: preset_store: failed to write to address %#02x "
+				       "while setting preset %i (error code %i)",
+				       addr, index, result);
+	}
+
+	/* ---- Validate fan modes ---- */
+	if(index != MSI_EC_PRESET_HIGH_PERFORMANCE) {
+		// Disable basic/adv fan mode flags when not using high performance preset
+		 ec_write_bit(MSI_EC_FAN_MODE_ADDRESS,
+			      MSI_EC_FAN_MODE_ADVANCED_BIT,
+			      FALSE);
+
+		 ec_write_bit(MSI_EC_FAN_MODE_ADDRESS,
+			      MSI_EC_FAN_MODE_BASIC_BIT,
+			      FALSE);
+	}
 
 	return count;
 }
@@ -499,22 +538,53 @@ static ssize_t fw_release_date_show(struct device *device,
 		       hour, minute, second);
 }
 
+static ssize_t ac_connected_show(struct device *device,
+			     	 struct device_attribute *attr, char *buf)
+{
+	u8 rdata;
+	int result;
+
+	result = ec_read(MSI_EC_POWER_ADDRESS, &rdata);
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", is_bit_set(MSI_EC_POWER_AC_CONNECTED_BIT, rdata));
+}
+
+static ssize_t lid_open_show(struct device *device,
+			     struct device_attribute *attr, char *buf)
+{
+	u8 rdata;
+	int result;
+
+	result = ec_read(MSI_EC_POWER_ADDRESS, &rdata);
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", is_bit_set(MSI_EC_POWER_LID_OPEN_BIT, rdata));
+}
+
 static DEVICE_ATTR_RW(webcam);
 static DEVICE_ATTR_RW(fn_key);
 static DEVICE_ATTR_RW(win_key);
-static DEVICE_ATTR_RW(battery_mode);
+static DEVICE_ATTR_RW(battery_charge_mode);
 static DEVICE_ATTR_RW(cooler_boost);
 static DEVICE_ATTR_RW(shift_mode);
 static DEVICE_ATTR_RW(fan_mode);
+static DEVICE_ATTR_RW(preset);
 static DEVICE_ATTR_RO(fw_version);
 static DEVICE_ATTR_RO(fw_release_date);
+static DEVICE_ATTR_RO(ac_connected);
+static DEVICE_ATTR_RO(lid_open);
 
 static struct attribute *msi_root_attrs[] = {
 	&dev_attr_webcam.attr,		&dev_attr_fn_key.attr,
-	&dev_attr_win_key.attr,		&dev_attr_battery_mode.attr,
+	&dev_attr_win_key.attr,		&dev_attr_battery_charge_mode.attr,
 	&dev_attr_cooler_boost.attr,	&dev_attr_shift_mode.attr,
-	&dev_attr_fan_mode.attr,	&dev_attr_fw_version.attr,
-	&dev_attr_fw_release_date.attr, NULL,
+	&dev_attr_fan_mode.attr,		&dev_attr_fw_version.attr,
+	&dev_attr_ac_connected.attr,	&dev_attr_lid_open.attr,
+	&dev_attr_fw_release_date.attr,	&dev_attr_preset.attr,
+	NULL
 };
 
 static const struct attribute_group msi_root_group = {
@@ -560,51 +630,7 @@ static ssize_t cpu_realtime_fan_speed_show(struct device *device,
 				MSI_EC_CPU_REALTIME_FAN_SPEED_BASE_MIN));
 }
 
-static ssize_t cpu_basic_fan_speed_show(struct device *device,
-					struct device_attribute *attr,
-					char *buf)
-{
-	u8 rdata;
-	int result;
 
-	result = ec_read(MSI_EC_CPU_BASIC_FAN_SPEED_ADDRESS, &rdata);
-	if (result < 0)
-		return result;
-
-	if (rdata < MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MIN ||
-	    rdata > MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MAX)
-		return -EINVAL;
-
-	return sprintf(buf, "%i\n",
-		       100 * (rdata - MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MIN) /
-			       (MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MAX -
-				MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MIN));
-}
-
-static ssize_t cpu_basic_fan_speed_store(struct device *dev,
-					 struct device_attribute *attr,
-					 const char *buf, size_t count)
-{
-	u8 wdata;
-	int result;
-
-	result = kstrtou8(buf, 10, &wdata);
-	if (result < 0)
-		return result;
-
-	if (wdata > 100)
-		return -EINVAL;
-
-	result = ec_write(MSI_EC_CPU_BASIC_FAN_SPEED_ADDRESS,
-			  (wdata * (MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MAX -
-				    MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MIN) +
-			   100 * MSI_EC_CPU_BASIC_FAN_SPEED_BASE_MIN) /
-				  100);
-	if (result < 0)
-		return result;
-
-	return count;
-}
 
 static struct device_attribute dev_attr_cpu_realtime_temperature = {
 	.attr = {
@@ -622,19 +648,9 @@ static struct device_attribute dev_attr_cpu_realtime_fan_speed = {
 	.show = cpu_realtime_fan_speed_show,
 };
 
-static struct device_attribute dev_attr_cpu_basic_fan_speed = {
-	.attr = {
-		.name = "basic_fan_speed",
-		.mode = 0644,
-	},
-	.show = cpu_basic_fan_speed_show,
-	.store = cpu_basic_fan_speed_store,
-};
-
 static struct attribute *msi_cpu_attrs[] = {
 	&dev_attr_cpu_realtime_temperature.attr,
 	&dev_attr_cpu_realtime_fan_speed.attr,
-	&dev_attr_cpu_basic_fan_speed.attr,
 	NULL,
 };
 
@@ -742,7 +758,7 @@ static int micmute_led_sysfs_set(struct led_classdev *led_cdev,
 				 enum led_brightness brightness)
 {
 	u8 state = brightness ? MSI_EC_MIC_LED_STATE_ON : MSI_EC_MIC_LED_STATE_OFF;
-	int result = ec_write(MSI_EC_LED_MICMUTE_ADDRESS, state);
+	int result = ec_write(MSI_EC_KBD_LED_MICMUTE_ADDRESS, state);
 	if (result < 0)
 		return result;
 	return 0;
@@ -751,8 +767,9 @@ static int micmute_led_sysfs_set(struct led_classdev *led_cdev,
 static int mute_led_sysfs_set(struct led_classdev *led_cdev,
 			      enum led_brightness brightness)
 {
-	u8 state = brightness ? MSI_EC_MUTE_LED_STATE_ON : MSI_EC_MUTE_LED_STATE_OFF;
-	int result = ec_write(MSI_EC_LED_MUTE_ADDRESS, state);
+	int result = ec_write_bit(MSI_EC_KBD_LED_MUTE_ADDRESS,
+				  MSI_EC_KBD_LED_MUTE_BIT,
+				  brightness);
 	if (result < 0)
 		return result;
 	return 0;
@@ -771,7 +788,7 @@ static int kbd_bl_sysfs_set(struct led_classdev *led_cdev,
 			    enum led_brightness brightness)
 {
 	u8 wdata;
-	if (brightness < 0 || brightness > 3)
+	if (brightness > 3)
 		return -1;
 	wdata = MSI_EC_KBD_BL_STATE[brightness];
 	return ec_write(MSI_EC_KBD_BL_ADDRESS, wdata);
@@ -794,7 +811,7 @@ static struct led_classdev mute_led_cdev = {
 static struct led_classdev msiacpi_led_kbdlight = {
 	.name = "msiacpi::kbd_backlight",
 	.max_brightness = 3,
-	.flags = LED_BRIGHT_HW_CHANGED,
+	.flags = LED_BRIGHT_HW_CHANGED & LED_RETAIN_AT_SHUTDOWN,
 	.brightness_set_blocking = &kbd_bl_sysfs_set,
 	.brightness_get = &kbd_bl_sysfs_get,
 };
@@ -830,11 +847,12 @@ static int __init msi_ec_init(void)
 		return result;
 	}
 
-	battery_hook_register(&battery_hook);
-
 	led_classdev_register(&msi_platform_device->dev, &micmute_led_cdev);
 	led_classdev_register(&msi_platform_device->dev, &mute_led_cdev);
 	led_classdev_register(&msi_platform_device->dev, &msiacpi_led_kbdlight);
+
+	// Enable backlight by default, the kernel doesn't properly retain its state despite flag for some reason
+	ec_write(MSI_EC_KBD_BL_ADDRESS, MSI_EC_KBD_BL_STATE[2]);
 
 	pr_info("msi-ec: module_init\n");
 	return 0;
@@ -846,8 +864,6 @@ static void __exit msi_ec_exit(void)
 	led_classdev_unregister(&micmute_led_cdev);
 	led_classdev_unregister(&msiacpi_led_kbdlight);
 
-	battery_hook_unregister(&battery_hook);
-
 	platform_driver_unregister(&msi_platform_driver);
 	platform_device_del(msi_platform_device);
 
@@ -857,8 +873,9 @@ static void __exit msi_ec_exit(void)
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jose Angel Pastrana <japp0005@red.ujaen.es>");
 MODULE_AUTHOR("Aakash Singh <mail@singhaakash.dev>");
+MODULE_AUTHOR("Tim Schneeberger <tim.schneeberger@outlook.de>");
 MODULE_DESCRIPTION("MSI Embedded Controller");
-MODULE_VERSION("0.08");
+MODULE_VERSION("0.09");
 
 module_init(msi_ec_init);
 module_exit(msi_ec_exit);
