@@ -1,4 +1,13 @@
 #!/bin/bash
+
+echo "
+    __  ________ ____     ____________
+   /  |/  / ___//  _/    / ____/ ____/
+  / /|_/ /\__ \ / /_____/ __/ / /     
+ / /  / /___/ // /_____/ /___/ /___   
+/_/  /_//____/___/    /_____/\____/   
+                                      
+"
 echo "Welcome To MSI-EC Control Script For MSI Modern 14 B5M"
 echo "Written by Olricccc"
 echo "Github: https://github.com/Olricccc   "
@@ -78,34 +87,34 @@ read -p "Waiting for user input:" VARBATT
   
        if [ "$VARBATT" == "0" ]; then
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
   
      elif [ "$VARBATT" == "1" ]; then
        echo "min" > /sys/devices/platform/msi-ec/battery_charge_mode    
        echo "Battery mode switched to Minimum"
        sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARBATT" == "2" ]; then
        echo "medium" > /sys/devices/platform/msi-ec/battery_charge_mode
        echo "Battery mode switched to Medium"
        sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARBATT" == "3" ]; then
        echo "max" > /sys/devices/platform/msi-ec/battery_charge_mode
        echo "Battery mode switched to Maximum"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
     else 
     echo "Please choose correct mode/preset"
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
      fi
 
 elif [ "$VAR" == "2" ]; then
@@ -123,41 +132,41 @@ read -p "Waiting for user input: " VARPRESET
 
      if [ "$VARPRESET" == "0" ]; then
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARPRESET" == "1" ]; then
        echo "super_battery" > /sys/devices/platform/msi-ec/preset
        echo "Switched to Super Battery"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARPRESET" == "2" ]; then
        echo "silent" > /sys/devices/platform/msi-ec/preset
        echo "Switched to Silent"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARPRESET" == "3" ]; then
        echo "balanced" > /sys/devices/platform/msi-ec/preset
        echo "Switched to Balanced"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARPRESET" == "4" ]; then
        echo "high_performance" > /sys/devices/platform/msi-ec/preset
        echo "Switched to High Performance"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
     else 
     echo "Please choose correct mode/preset"
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 fi
 
 elif [ "$VAR" == "3" ]; then
@@ -174,41 +183,41 @@ elif [ "$VAR" == "3" ]; then
 
     if [ "$VARSHIFT" == "0" ]; then
        clear
-       bash ./control.sh
-     
+       bash ./msiec-control-app
+
      elif [ "$VARSHIFT" == "1" ]; then
        echo "overclock" > /sys/devices/platform/msi-ec/shift_mode
        echo "Switched to Overclock mode"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARSHIFT" == "2" ]; then
        echo "balanced" > /sys/devices/platform/msi-ec/shift_mode
        echo "Switched to Balanced mode"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARSHIFT" == "3" ]; then
        echo "eco" > /sys/devices/platform/msi-ec/shift_mode
        echo "Switched to Eco mode"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARSHIFT" == "4" ]; then
        echo "off" > /sys/devices/platform/msi-ec/shift_mode
        echo "Switched to Off mode"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
     else 
     echo "Please choose correct mode/preset"
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
      fi
 
    elif [ "$VAR" == "4" ]; then
@@ -223,27 +232,27 @@ elif [ "$VAR" == "3" ]; then
 
      if [ "$VARCOOL" == "0" ]; then
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARCOOL" == "1" ]; then
        echo "off" > /sys/devices/platform/msi-ec/cooler_boost
        echo "Cooler Boost disabled"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARCOOL" == "2" ]; then
        echo "on" > /sys/devices/platform/msi-ec/cooler_boost
        echo "Cooler Boost enabled. Be Careful with your fans!"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
     else 
     echo "Please choose correct mode/preset"   
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
        fi
 
    elif [ "$VAR" == "5" ]; then
@@ -259,33 +268,33 @@ elif [ "$VAR" == "3" ]; then
 
      if [ "$VARFANS" == "0" ]; then
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARFANS" == "1" ]; then
        echo "auto" > /sys/devices/platform/msi-ec/fan_mode
        echo "Fan mode switched to Auto"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARFANS" == "2" ]; then
        echo "silent" > /sys/devices/platform/msi-ec/fan_mode
        echo "Fan mode switched to Silent"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
     elif [ "$VARFANS" == "3" ]; then
        echo "advanced" > /sys/devices/platform/msi-ec/fan_mode
        echo "Fan mode switched to Advanced"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
     else 
     echo "Please choose correct mode/preset"
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
     fi
 
    elif [ "$VAR" == "6" ]; then
@@ -300,15 +309,15 @@ elif [ "$VAR" == "3" ]; then
 
           if [ "$VARKEYS" == "0" ]; then
        clear
-       bash ./control.sh
-     
+       bash ./msiec-control-app
+
      elif [ "$VARKEYS" == "1" ]; then
        echo "left" > /sys/devices/platform/msi-ec/win_key
        echo "right" > /sys/devices/platform/msi-ec/fn_key
        echo "Keys switched to Default Layout"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
      elif [ "$VARKEYS" == "2" ]; then
        echo "right" > /sys/devices/platform/msi-ec/win_key
@@ -316,12 +325,12 @@ elif [ "$VAR" == "3" ]; then
        echo "Keys switched with each other"
               sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
     else 
     echo "Please choose correct mode/preset"
                   sleep 3
        clear
-       bash ./control.sh
+       bash ./msiec-control-app
 
 fi
 
